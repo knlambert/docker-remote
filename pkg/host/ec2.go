@@ -1,30 +1,82 @@
 package host
 
 import (
-	"github.com/knlambert/docker-remote.git/pkg/sdk/aws"
+	"github.com/knlambert/docker-remote.git/pkg/host/aws"
+	"github.com/pkg/errors"
 	"log"
 	"time"
 )
 
 func CreateEC2Host(
-	accessKeyID string, secretAccessKey string, region string,
+	accessKeyID string,
+	secretAccessKey string,
+	region string,
 ) DockerHostSystem {
 	return &ec2HostImpl{
 		aws: aws.Create(
 			accessKeyID, secretAccessKey, region,
 		),
+		helpers: CreatePluginHelpers(),
 	}
 }
 
 type ec2HostImpl struct {
-	aws aws.AWS
+	aws     aws.AWS
+	helpers PluginHelpers
 }
 
-func (e *ec2HostImpl) Up() error {
-	instanceId, err := e.aws.CreateVM()
+func (e *ec2HostImpl) Down() error {
+	metadata, err := e.helpers.DefaultMetadata()
+
+	if err != nil {
+		return errors.Wrap(err, "failed to calculate metadata")
+	}
+
+	instance, err := e.aws.InstanceDescribe(metadata, []string{"running", "pending"})
 
 	if err != nil {
 		return err
+	}
+
+	if instance != nil {
+		if err := e.aws.InstanceTerminate(*instance.Id); err != nil {
+			return errors.Wrapf(err, "failed to shutdown the docker host")
+		}
+
+		log.Println("Shutdown signal sent")
+	} else {
+		log.Println("Docker host is already down")
+	}
+
+	return nil
+}
+
+func (e *ec2HostImpl) Up() error {
+	metadata, err := e.helpers.DefaultMetadata()
+
+	if err != nil {
+		return errors.Wrap(err, "failed to calculate metadata")
+	}
+
+	instance, err := e.aws.InstanceDescribe(metadata, []string{"running", "pending"})
+
+	if err != nil {
+		return err
+	}
+
+	var instanceId *string
+
+	if instance == nil {
+		instanceId, err = e.aws.InstanceCreate(
+			metadata,
+		)
+
+		if err != nil {
+			return err
+		}
+
+	} else {
+		instanceId = instance.Id
 	}
 
 	var ready = false
@@ -46,5 +98,42 @@ func (e *ec2HostImpl) Up() error {
 	}
 
 	log.Println("Instance is ready !")
+
+	instance, err = e.aws.InstanceDescribe(metadata, []string{"running"})
+
+	if err != nil {
+		return err
+	}
+
+	log.Printf("Instance IP: %s", *instance.PublicIp)
+
+	return nil
+}
+
+func (e *ec2HostImpl) Shell(publicKeyPath *string) error {
+	metadata, err := e.helpers.DefaultMetadata()
+
+	if err != nil {
+		return errors.Wrap(err, "failed to calculate metadata")
+	}
+
+	instance, err := e.aws.InstanceDescribe(metadata, []string{"running", "pending"})
+
+	if err != nil {
+		return err
+	}
+
+	if instance == nil {
+		return errors.Errorf("Please create the host first")
+	}
+
+	if err := e.helpers.SSHConnection(
+		*instance.PublicIp,
+		"ec2-user",
+		*publicKeyPath,
+	); err != nil {
+		return err
+	}
+
 	return nil
 }
