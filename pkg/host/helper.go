@@ -2,7 +2,9 @@ package host
 
 import (
 	"fmt"
+	"github.com/knlambert/docker-remote.git/pkg/docker"
 	"github.com/knlambert/docker-remote.git/pkg/std/user"
+	"github.com/pkg/errors"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/terminal"
 	"io"
@@ -13,6 +15,7 @@ import (
 
 type PluginHelpers interface {
 	DefaultMetadata() (map[string]string, error)
+	RegisterToDocker(name string, dockerHost string) error
 	SSHConnection(
 		host string,
 		username string,
@@ -22,12 +25,14 @@ type PluginHelpers interface {
 
 func CreatePluginHelpers() PluginHelpers {
 	return &pluginHelperImpl{
-		user: user.CreateUser(),
+		user:   user.CreateUser(),
+		docker: docker.CreateDocker(),
 	}
 }
 
 type pluginHelperImpl struct {
-	user user.User
+	user   user.User
+	docker docker.Docker
 }
 
 func (b *pluginHelperImpl) DefaultMetadata() (map[string]string, error) {
@@ -43,6 +48,14 @@ func (b *pluginHelperImpl) DefaultMetadata() (map[string]string, error) {
 	metadata["managed_by"] = "docker-remote"
 
 	return metadata, nil
+}
+
+//Registers a docker service on the local machine leveraging the Docker contexts.
+func (b *pluginHelperImpl) RegisterToDocker(name string, dockerHost string) error {
+	if err := b.docker.ContextSet(name, dockerHost); err != nil {
+		return errors.Wrap(err, "failed to save the docker host to a docker context")
+	}
+	return nil
 }
 
 func (b *pluginHelperImpl) SSHConnection(

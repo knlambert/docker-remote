@@ -1,6 +1,7 @@
 package host
 
 import (
+	"fmt"
 	"github.com/knlambert/docker-remote.git/pkg/host/aws"
 	"github.com/pkg/errors"
 	"log"
@@ -61,7 +62,7 @@ func (e *ec2HostImpl) Up() error {
 	instance, err := e.aws.InstanceDescribe(metadata, []string{"running", "pending"})
 
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to describe ec2 host")
 	}
 
 	var instanceId *string
@@ -107,7 +108,18 @@ func (e *ec2HostImpl) Up() error {
 
 	log.Printf("Instance IP: %s", *instance.PublicIp)
 
-	return nil
+	dockerContextName := "docker-remote-ec2"
+
+	err = e.helpers.RegisterToDocker(
+		dockerContextName,
+		fmt.Sprintf("ssh://ec2-user@%s", *instance.PublicIp),
+	)
+
+	if err == nil {
+		log.Printf("Docker context %s set !", dockerContextName)
+	}
+
+	return err
 }
 
 func (e *ec2HostImpl) Shell(publicKeyPath *string) error {
