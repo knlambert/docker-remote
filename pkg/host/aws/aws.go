@@ -18,6 +18,10 @@ sudo usermod -a -G docker ec2-user
 
 type AWS interface {
 	InstanceCreate(
+		ami string,
+		instanceType string,
+		keyName string,
+		securityGroup string,
 		tags map[string]string,
 	) (*string, error)
 	InstanceDescribe(
@@ -28,13 +32,9 @@ type AWS interface {
 	InstanceTerminate(instanceId string) error
 }
 
-func Create(accessKeyID string, secretAccessKey string, region string) AWS {
+func Create() AWS {
 	return &awsImpl{
-		CreateFactory(
-			accessKeyID,
-			secretAccessKey,
-			region,
-		),
+		CreateFactory(),
 	}
 }
 
@@ -43,6 +43,10 @@ type awsImpl struct {
 }
 
 func (a *awsImpl) InstanceCreate(
+	ami string,
+	instanceType string,
+	keyName string,
+	securityGroup string,
 	tags map[string]string,
 ) (*string, error) {
 	c, err := a.factory.EC2()
@@ -52,13 +56,13 @@ func (a *awsImpl) InstanceCreate(
 	}
 
 	res, err := c.RunInstances(&ec2.RunInstancesInput{
-		ImageId:          aws.String("ami-0c2f25c1f66a1ff4d"),
-		InstanceType:     aws.String("t2.micro"),
+		ImageId:          aws.String(ami),
+		InstanceType:     aws.String(instanceType),
 		MaxCount:         aws.Int64(1),
 		MinCount:         aws.Int64(1),
 		UserData:         aws.String(base64.StdEncoding.EncodeToString([]byte(initScript))),
-		SecurityGroupIds: []*string{aws.String("sg-0aa7c79fa8f29db48")},
-		KeyName:          aws.String("ec2-admin"),
+		SecurityGroupIds: []*string{aws.String(securityGroup)},
+		KeyName:          aws.String(keyName),
 		TagSpecifications: []*ec2.TagSpecification{{
 			ResourceType: aws.String("instance"),
 			Tags:         mapToTags(tags),

@@ -6,17 +6,24 @@ import (
 	"log"
 )
 
-func createShellCmd() *cobra.Command {
-	downCmd := cobra.Command{
-		Use: "shell [path-to-public-key]",
+func createShellCmd(requestedDriver string) *cobra.Command {
+	impl := host.BuildHostImplementation(requestedDriver)
+
+	shellParams := impl.RegisterCommandParams("shell")
+
+	shellCmd := cobra.Command{
+		Use: "shell",
 		Short: "Open a shell to the remote host",
 		Run: func(cmd *cobra.Command, args[]string) {
-			if err := host.BuildHostImplementation("ec2").Shell(&args[0]); err != nil {
+			if err := impl.Shell(shellParams); err != nil {
 				log.Fatal(err)
 			}
 		},
-		Args: cobra.MinimumNArgs(1),
 	}
 
-	return &downCmd
+	if err := impl.RegisterCobraFlags(&shellCmd, shellParams); err != nil {
+		log.Fatal(err)
+	}
+
+	return &shellCmd
 }

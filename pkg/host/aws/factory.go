@@ -1,8 +1,6 @@
 package aws
 
 import (
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/pkg/errors"
@@ -12,19 +10,11 @@ type Factory interface {
 	EC2() (EC2, error)
 }
 
-func CreateFactory(accessKeyID string, secretAccessKey string, region string) Factory {
-	return &factoryImpl{
-		accessKeyId:     accessKeyID,
-		secretAccessKey: secretAccessKey,
-		region: &region,
-	}
+func CreateFactory() Factory {
+	return &factoryImpl{}
 }
 
-type factoryImpl struct {
-	accessKeyId     string
-	secretAccessKey string
-	region * string
-}
+type factoryImpl struct {}
 
 func (f *factoryImpl) EC2() (EC2, error) {
 	s, err := f.session()
@@ -37,14 +27,7 @@ func (f *factoryImpl) EC2() (EC2, error) {
 }
 
 func (f *factoryImpl) session() (*session.Session, error) {
-	s, err := session.NewSession(&aws.Config{
-		Credentials: credentials.NewStaticCredentials(
-			f.accessKeyId,
-			f.secretAccessKey,
-			"",
-		),
-		Region: f.region,
-	})
+	s, err := session.NewSession()
 
 	if err != nil {
 		return nil, err

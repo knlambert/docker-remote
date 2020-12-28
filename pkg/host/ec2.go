@@ -4,21 +4,27 @@ import (
 	"fmt"
 	"github.com/knlambert/docker-remote.git/pkg/host/aws"
 	"github.com/pkg/errors"
+	"github.com/spf13/cobra"
 	"log"
 	"time"
 )
 
-func CreateEC2Host(
-	accessKeyID string,
-	secretAccessKey string,
-	region string,
-) DockerHostSystem {
+func CreateEC2Host() DockerHostSystem {
 	return &ec2HostImpl{
-		aws: aws.Create(
-			accessKeyID, secretAccessKey, region,
-		),
+		aws:     aws.Create(),
 		helpers: CreatePluginHelpers(),
 	}
+}
+
+type UpParams struct {
+	AMI           string
+	InstanceType  string
+	KeyName       string
+	SecurityGroup string
+}
+
+type ShellParams struct {
+	PathToPublicKey string
 }
 
 type ec2HostImpl struct {
@@ -52,7 +58,9 @@ func (e *ec2HostImpl) Down() error {
 	return nil
 }
 
-func (e *ec2HostImpl) Up() error {
+func (e *ec2HostImpl) Up(params interface{}) error {
+	upParams := params.(*UpParams)
+
 	metadata, err := e.helpers.DefaultMetadata()
 
 	if err != nil {
@@ -69,6 +77,10 @@ func (e *ec2HostImpl) Up() error {
 
 	if instance == nil {
 		instanceId, err = e.aws.InstanceCreate(
+			upParams.AMI,
+			upParams.InstanceType,
+			upParams.KeyName,
+			upParams.SecurityGroup,
 			metadata,
 		)
 
@@ -122,7 +134,57 @@ func (e *ec2HostImpl) Up() error {
 	return err
 }
 
-func (e *ec2HostImpl) Shell(publicKeyPath *string) error {
+func (e *ec2HostImpl) RegisterCobraFlags(
+	cmd *cobra.Command,
+	commandParams interface{},
+) error {
+	switch casted := commandParams.(type) {
+	case *ShellParams:
+		cmd.Flags().StringVarP(
+			&casted.PathToPublicKey,
+			"public-key-path", "", "",
+			"The path to the PEM key file to use for connection",
+		)
+		_ = cmd.MarkFlagRequired("public-key-path")
+	case *UpParams:
+		cmd.Flags().StringVarP(
+			&casted.AMI, "ami", "", "ami-0c2f25c1f66a1ff4d", "The AMI to use",
+		)
+
+		cmd.Flags().StringVarP(
+			&casted.InstanceType, "instance-type", "", "t2.micro", "The instance type to use",
+		)
+
+		cmd.Flags().StringVarP(
+			&casted.KeyName, "key-name", "", "", "The ssh key pair to use to connect to the VM",
+		)
+
+		cmd.Flags().StringVarP(
+			&casted.SecurityGroup, "sg-id", "", "", "A security group ID for the VM",
+		)
+
+		_ = cmd.MarkFlagRequired("key-name")
+		_ = cmd.MarkFlagRequired("sg-id")
+
+	}
+
+	return nil
+}
+
+func (e *ec2HostImpl) RegisterCommandParams(command string) interface{} {
+	switch command {
+	case "shell":
+		return &ShellParams{}
+	case "up":
+		return &UpParams{}
+
+	}
+	return nil
+}
+
+func (e *ec2HostImpl) Shell(params interface{}) error {
+	shellParams := params.(*ShellParams)
+
 	metadata, err := e.helpers.DefaultMetadata()
 
 	if err != nil {
@@ -142,7 +204,7 @@ func (e *ec2HostImpl) Shell(publicKeyPath *string) error {
 	if err := e.helpers.SSHConnection(
 		*instance.PublicIp,
 		"ec2-user",
-		*publicKeyPath,
+		shellParams.PathToPublicKey,
 	); err != nil {
 		return err
 	}

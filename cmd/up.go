@@ -6,16 +6,24 @@ import (
 	"log"
 )
 
-func createUpCmd() *cobra.Command {
+func createUpCmd(requestedDriver string) *cobra.Command {
+	impl := host.BuildHostImplementation(requestedDriver)
+
+	upParams := impl.RegisterCommandParams("up")
+
 	upCmd := cobra.Command{
 		Use:   "up",
-		Short: "Create the docker host.",
-		Long:  "Create the docker host.",
+		Short: "Creates the docker host.",
+		Long:  "Creates the docker host.",
 		Run: func(cmd *cobra.Command, args []string) {
-			if err := host.BuildHostImplementation("ec2").Up(); err != nil {
+			if err := impl.Up(upParams); err != nil {
 				log.Fatal(err)
 			}
 		},
+	}
+
+	if err := impl.RegisterCobraFlags(&upCmd, upParams); err != nil {
+		log.Fatal(err)
 	}
 
 	return &upCmd
