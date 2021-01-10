@@ -26,8 +26,9 @@ func Execute() {
 		rootCmd.AddCommand(&driverCmd)
 
 		driverCmd.AddCommand(createUpCmd(requestedDriver))
-		driverCmd.AddCommand(createDownCmd())
+		driverCmd.AddCommand(createDownCmd(requestedDriver))
 		driverCmd.AddCommand(createShellCmd(requestedDriver))
+		driverCmd.AddCommand(createPortForwardCmd(requestedDriver))
 
 	}
 

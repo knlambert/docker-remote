@@ -5,7 +5,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func createShellCmd(requestedDriver string) *cobra.Command {
+func createPortForwardCmd(requestedDriver string) *cobra.Command {
 	impl := host.BuildHostImplementation(requestedDriver)
-	return impl.CobraCommand(host.Shell)
+	return impl.CobraCommand(host.PortForward)
 }
