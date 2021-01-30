@@ -8,6 +8,7 @@ import (
 	"github.com/knlambert/docker-remote.git/pkg/std/runtime"
 	"github.com/knlambert/docker-remote.git/pkg/std/user"
 	"github.com/pkg/errors"
+	"path/filepath"
 )
 
 type Docker interface {
@@ -42,10 +43,12 @@ func (d *dockerImpl) dockerConfigFolderPath() (*string, error) {
 		return nil, errors.Wrap(err, "failed to determine current user")
 	}
 
-	if currentOs := d.runtime.CurrentOS(); currentOs == "linux" || currentOs == "darwin" {
-		folderPath := fmt.Sprintf("%s/.docker", currentUser.HomeDir)
+	currentOS := d.runtime.CurrentOS()
+
+	if currentOS == "linux" || currentOS == "darwin" || currentOS == "windows" {
+		folderPath := filepath.Join(currentUser.HomeDir, ".docker")
 		return &folderPath, nil
 	}
 
-	return nil, pkg.CreateNotImplementedError("os not supported")
+	return nil, pkg.CreateNotImplementedError(fmt.Sprintf("os %s not supported", currentOS))
 }

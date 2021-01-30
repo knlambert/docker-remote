@@ -29,6 +29,7 @@ func (f *factoryImpl) EC2() (EC2, error) {
 func (f *factoryImpl) session() (*session.Session, error) {
 	s, err := session.NewSession()
 
+
 	if err != nil {
 		return nil, err
 	}

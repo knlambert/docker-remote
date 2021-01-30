@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/sh
 
 rm -rf pkg/mock
 

@@ -73,7 +73,7 @@ func TestContextSetFromNothing(t *testing.T) {
 	ctrl.Finish()
 }
 
-func TestContextSetFailWithWindows(t *testing.T) {
+func TestContextSetFailWithUnknownOS(t *testing.T) {
 	// Tear up.
 	ctrl := gomock.NewController(t)
 	s, _, _, runtimeMock , userMock := stubbedDocker(ctrl)
@@ -82,12 +82,12 @@ func TestContextSetFailWithWindows(t *testing.T) {
 		HomeDir: expectedHomePath,
 	}, nil)
 
-	runtimeMock.EXPECT().CurrentOS().Return("windows")
+	runtimeMock.EXPECT().CurrentOS().Return("unknown")
 
 	//Assertions
 	err := s.ContextSet("remote-1", "127.0.0.1")
 
-	assert.Errorf(t, err, "ContextSet should return an error on windows")
+	assert.Errorf(t, err, "ContextSet should return an error on unknown")
 	assert.Equal(
 		t, errors.Cause(err).(*pkg.InternalError).ErrorType, pkg.NotImplemented, "ContextSet error should be of type not implemented",
 	)

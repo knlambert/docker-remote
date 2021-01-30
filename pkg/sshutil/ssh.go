@@ -21,6 +21,7 @@ type SSHUtils interface {
 		username string,
 		publicKeyPath string,
 	) error
+	//Opens an SSH connection to a host.
 	SSHConnection(
 		host string,
 		username string,
@@ -87,6 +88,7 @@ func (s *sshUtilsImpl) LocalPortForward(
 	}
 }
 
+//Opens an SSH connection to a host.
 func (s *sshUtilsImpl) SSHConnection(
 	host string,
 	username string,
@@ -107,13 +109,13 @@ func (s *sshUtilsImpl) SSHConnection(
 	conn, err := ssh.Dial("tcp", fmt.Sprintf("%s:22", host), config)
 
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to dial with the host")
 	}
 
 	session, err := conn.NewSession()
 
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to create the SSH session")
 	}
 
 	defer session.Close()
@@ -126,28 +128,33 @@ func (s *sshUtilsImpl) SSHConnection(
 	}
 
 	stdin, err := session.StdinPipe()
+
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to create SSH the stdin pipe")
 	}
+
 	go io.Copy(stdin, os.Stdin)
 
 	stdinFd := int(os.Stdin.Fd())
+	stdoutFd := int(os.Stdout.Fd())
+
 	if terminal.IsTerminal(stdinFd) {
 		originalState, err := terminal.MakeRaw(stdinFd)
 
 		if err != nil {
-			return err
+			return errors.Wrap(err, "failed to create terminal original state")
 		}
 
 		defer terminal.Restore(stdinFd, originalState)
 
-		termWidth, termHeight, err := terminal.GetSize(stdinFd)
+		termWidth, termHeight, err := terminal.GetSize(stdoutFd)
 
 		if err != nil {
-			return err
+			return errors.Wrap(err, "failed to get the terminal size")
 		}
 
 		err = session.RequestPty("xterm-256color", termHeight, termWidth, modes)
+
 		if err != nil {
 			return err
 		}
@@ -156,14 +163,15 @@ func (s *sshUtilsImpl) SSHConnection(
 	stdout, err := session.StdoutPipe()
 
 	if err != nil {
-		log.Fatal(err)
+		return errors.Wrap(err, "failed to create the stdout pipe")
 	}
+
 	go io.Copy(os.Stdout, stdout)
 
 	stderr, err := session.StderrPipe()
 
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to create the stderr pipe")
 	}
 
 	go io.Copy(os.Stderr, stderr)
@@ -171,7 +179,7 @@ func (s *sshUtilsImpl) SSHConnection(
 	err = session.Shell()
 
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to create the shell")
 	}
 
 	session.Wait()
