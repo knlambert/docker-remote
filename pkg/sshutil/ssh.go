@@ -1,15 +1,25 @@
 package sshutil
 
 import (
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
+	"github.com/Microsoft/go-winio"
+	"github.com/knlambert/docker-remote.git/pkg/std/runtime"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/crypto/ssh/terminal"
 	"io"
 	"io/ioutil"
 	"log"
 	"net"
 	"os"
+)
+
+const (
+	windowsSSHAgentPipe = `\\.\pipe\openssh-ssh-agent`
+	dockerRemoteEC2KeyID = "docker-remote-ec2-key"
 )
 
 type SSHUtils interface {
@@ -19,21 +29,31 @@ type SSHUtils interface {
 		remotePort uint,
 		host string,
 		username string,
-		publicKeyPath string,
 	) error
+	//Adds a private key to the SSH Agent.
+	SSHAgent() (agent.Agent, error)
+	//Adds a private key to the SSH Agent.
+	SSHAgentAddKey(
+		privateKeyPath string,
+	) error
+	//Removes a private key to the SSH Agent.
+	SSHAgentRemoveKey() error
 	//Opens an SSH connection to a host.
 	SSHConnection(
 		host string,
 		username string,
-		publicKeyPath string,
 	) error
 }
 
 func CreateSSHUtils() SSHUtils {
-	return &sshUtilsImpl{}
+	return &sshUtilsImpl{
+		runtime: runtime.CreateRuntime(),
+	}
 }
 
-type sshUtilsImpl struct{}
+type sshUtilsImpl struct{
+	runtime runtime.Runtime
+}
 
 func (s *sshUtilsImpl) LocalPortForward(
 	localPort uint,
@@ -41,17 +61,18 @@ func (s *sshUtilsImpl) LocalPortForward(
 	remotePort uint,
 	host string,
 	username string,
-	publicKeyPath string,
 ) error {
-	publicKey, err := s.publicKey(publicKeyPath)
+	a, err := s.SSHAgent()
 
 	if err != nil {
-		return errors.Wrapf(err, "failed to load public key %s", publicKeyPath)
+		return err
 	}
 
 	config := &ssh.ClientConfig{
-		User: username,
-		Auth: []ssh.AuthMethod{publicKey},
+		User:            username,
+		Auth:            []ssh.AuthMethod{
+			ssh.PublicKeysCallback(a.Signers),
+		},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
 
@@ -63,7 +84,7 @@ func (s *sshUtilsImpl) LocalPortForward(
 
 	errChan := make(chan error)
 
-	go func(){
+	go func() {
 		for err := range errChan {
 			log.Println(err)
 		}
@@ -88,21 +109,101 @@ func (s *sshUtilsImpl) LocalPortForward(
 	}
 }
 
+//Returns an SSH Agent instance.
+func (s *sshUtilsImpl) SSHAgent() (agent.Agent, error) {
+	if s.runtime.CurrentOS() == "windows" {
+
+		conn, err := winio.DialPipe(windowsSSHAgentPipe, nil)
+
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to open ssh agent pipe")
+		}
+
+		return agent.NewClient(conn), nil
+	}
+
+	return nil, errors.New("SSH agent not supported for this OS")
+}
+
+//Adds a private key to the SSH Agent.
+func (s *sshUtilsImpl) SSHAgentAddKey(
+	keyPairPath string,
+) error {
+	a, err := s.SSHAgent()
+
+	if err != nil {
+		return errors.Wrap(err, "failed to get the SSH agent")
+	}
+
+	keyPairPEM, err := ioutil.ReadFile(keyPairPath)
+
+	if err != nil {
+		return err
+	}
+
+	block, _ := pem.Decode(keyPairPEM)
+
+	key, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+
+	if err != nil {
+		return err
+	}
+
+	if err:= a.Add(agent.AddedKey{
+		Comment: dockerRemoteEC2KeyID,
+		PrivateKey:           key,
+	}); err != nil {
+		return errors.Wrap(err, "failed to add the key to the agent")
+	}
+
+	return nil
+}
+
+//Removes a private key to the SSH Agent.
+func (s *sshUtilsImpl) SSHAgentRemoveKey() error {
+	a, err := s.SSHAgent()
+
+	if err != nil {
+		return errors.Wrap(err, "failed to get the SSH agent")
+	}
+
+	keys, err := a.List()
+
+	if err != nil {
+		return err
+	}
+
+	for _, key := range keys {
+
+		if key.Comment == dockerRemoteEC2KeyID {
+			publicKey, err := ssh.ParsePublicKey(key.Blob)
+
+			if err != nil {
+				return err
+			}
+
+			return a.Remove(publicKey)
+		}
+	}
+
+	return nil
+}
 //Opens an SSH connection to a host.
 func (s *sshUtilsImpl) SSHConnection(
 	host string,
 	username string,
-	publicKeyPath string,
 ) error {
-	key, err := s.publicKey(publicKeyPath)
+	a, err := s.SSHAgent()
 
 	if err != nil {
-		return errors.Wrapf(err, "failed to load public key %s", publicKeyPath)
+		return err
 	}
 
 	config := &ssh.ClientConfig{
 		User:            username,
-		Auth:            []ssh.AuthMethod{key},
+		Auth:            []ssh.AuthMethod{
+			ssh.PublicKeysCallback(a.Signers),
+		},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
 
@@ -212,20 +313,20 @@ func (s *sshUtilsImpl) forward(
 	}
 
 	go func() {
-		if _, err := io.Copy(remoteConn, localConn);  err != nil {
+		if _, err := io.Copy(remoteConn, localConn); err != nil {
 			errChan <- errors.Wrap(err, "failed to forward connection (remote -> local)")
 		}
 	}()
 
 	go func() {
-		if _, err := io.Copy(localConn, remoteConn);  err != nil {
+		if _, err := io.Copy(localConn, remoteConn); err != nil {
 			errChan <- errors.Wrap(err, "failed to forward connection (local -> remote)")
 		}
 	}()
 
 }
 
-func (s *sshUtilsImpl) publicKey (path string) (ssh.AuthMethod, error) {
+func (s *sshUtilsImpl) keyPairExtractSSHPublicKey(path string) (ssh.AuthMethod, error) {
 	key, err := ioutil.ReadFile(path)
 
 	if err != nil {

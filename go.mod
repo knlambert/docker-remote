@@ -3,6 +3,7 @@ module github.com/knlambert/docker-remote.git
 go 1.13
 
 require (
+	github.com/Microsoft/go-winio v0.4.16
 	github.com/aws/aws-sdk-go v1.35.18
 	github.com/golang/mock v1.4.4
 	github.com/pkg/errors v0.9.1
