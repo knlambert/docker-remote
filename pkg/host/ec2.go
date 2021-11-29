@@ -25,10 +25,10 @@ type ec2HostImpl struct {
 }
 
 type ForwardParams struct {
-	LocalPort       uint
-	PathToPublicKey string
-	RemotePort      uint
-	RemoteAddr      string
+	LocalPort   uint
+	KeyPairPath string
+	RemotePort  uint
+	RemoteAddr  string
 }
 
 func (e *ec2HostImpl) PortForward(params interface{}) error {
@@ -53,7 +53,6 @@ func (e *ec2HostImpl) PortForward(params interface{}) error {
 		fwdParams.RemotePort,
 		*instance.PublicIp,
 		"ec2-user",
-		fwdParams.PathToPublicKey,
 	)
 }
 
@@ -80,12 +79,13 @@ func (e *ec2HostImpl) Down() error {
 		log.Println("Docker host is already down")
 	}
 
-	return nil
+	return e.helpers.SSHUtils().SSHAgentRemoveKey()
 }
 
 type UpParams struct {
 	AMI           string
 	InstanceType  string
+	KeyPairPath   string
 	KeyName       string
 	SecurityGroup string
 }
@@ -135,18 +135,10 @@ func (e *ec2HostImpl) CobraCommand(
 		}
 
 		fwdCmd.Flags().StringVarP(
-			&fwdParams.PathToPublicKey,
-			"public-key-path", "", "",
-			"The path to the PEM key file to use for connection",
-		)
-
-		fwdCmd.Flags().StringVarP(
 			&fwdParams.RemoteAddr,
 			"remote-addr", "", "127.0.0.1",
 			"The address to forward from on the remote machine",
 		)
-
-		_ = fwdCmd.MarkFlagRequired("public-key-path")
 
 		return &fwdCmd
 
@@ -162,13 +154,6 @@ func (e *ec2HostImpl) CobraCommand(
 			},
 		}
 
-		shellCmd.Flags().StringVarP(
-			&shellParams.PathToPublicKey,
-			"public-key-path", "", "",
-			"The path to the PEM key file to use for connection",
-		)
-		_ = shellCmd.MarkFlagRequired("public-key-path")
-
 		return &shellCmd
 	case Up:
 		upParams := UpParams{}
@@ -182,6 +167,12 @@ func (e *ec2HostImpl) CobraCommand(
 				}
 			},
 		}
+
+		upCmd.Flags().StringVarP(
+			&upParams.KeyPairPath,
+			"key-pair-path", "", "",
+			"The path to the PEM key file to use for connection",
+		)
 
 		upCmd.Flags().StringVarP(
 			&upParams.AMI, "ami", "", "ami-0c2f25c1f66a1ff4d", "The AMI to use",
@@ -209,12 +200,10 @@ func (e *ec2HostImpl) CobraCommand(
 }
 
 type ShellParams struct {
-	PathToPublicKey string
+	KeyPairPath string
 }
 
 func (e *ec2HostImpl) Shell(params interface{}) error {
-	shellParams := params.(*ShellParams)
-
 	metadata, err := e.helpers.DefaultMetadata()
 
 	if err != nil {
@@ -234,7 +223,6 @@ func (e *ec2HostImpl) Shell(params interface{}) error {
 	if err := e.helpers.SSHUtils().SSHConnection(
 		*instance.PublicIp,
 		"ec2-user",
-		shellParams.PathToPublicKey,
 	); err != nil {
 		return err
 	}
@@ -314,5 +302,5 @@ func (e *ec2HostImpl) Up(params interface{}) error {
 		log.Printf("Docker context %s set !", dockerContextName)
 	}
 
-	return err
+	return e.helpers.SSHUtils().SSHAgentAddKey(upParams.KeyPairPath)
 }

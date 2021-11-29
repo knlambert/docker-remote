@@ -5,45 +5,60 @@ A simple project to be able to spin up a docker service.
 Supported hosts:
 * ec2
 
+# Why
+
+Sometimes, you don't want to run docker on your machine. It can be because
+you don't have enough CPU / RAM on your Desktop, or because of the
+policy of the company you work for.
+
+With docker remote, you only install the docker client on your machine,
+and the docker daemon can run on a distant machine, like an AWS EC2.
+
 # Usage
 
-## Host
+## Setup
+You must be connected to the AWS cli first,
+then export the AWS REGION variable.
 
-### Start the host.
+### Linux & Mac
 ```bash
-export AWS_ACCESS_KEY_ID=xxxx
-export AWS_SECRET_ACCESS_KEY=xxxx
 export AWS_DEFAULT_REGION="ca-central-1"
+```
 
+### Windows
+
+```powershell
+$env:AWS_REGION = 'ca-central-1'
+```
+
+## Host creation
+
+```bash
 docker-remote ec2 up  \
     --security-group=sg-1234 \
     --vpc-id=vpc-1234 \
     --default-region="ca-central-1"
 ```
-### Connect to the host.
+
+## Connect to the host.
 ```bash
 docker-remote ec2 shell
 ```
 
-### Kill the host.
+## Kill the host.
 ```bash
 docker-remote ec2 down
 ```
 
-### Port forward
+## Port forward
 
 ```bash
 docker-remote ec2 port-forward 80:8080 --remote-host localhost
 ```
 
-### Configure the docker client
-
-```bash
-docker-remote ec2 port-forward 80:8080
-```
 
 
-### To use the docker command line from your machine :
+## To use the docker command line from your machine :
 
 Docker through ssh does not integrate the keys very well: 
 
