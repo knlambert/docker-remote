@@ -4,7 +4,6 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"github.com/Microsoft/go-winio"
 	"github.com/knlambert/docker-remote.git/pkg/std/runtime"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/ssh"
@@ -18,7 +17,6 @@ import (
 )
 
 const (
-	windowsSSHAgentPipe = `\\.\pipe\openssh-ssh-agent`
 	dockerRemoteEC2KeyID = "docker-remote-ec2-key"
 )
 
@@ -111,18 +109,21 @@ func (s *sshUtilsImpl) LocalPortForward(
 
 //Returns an SSH Agent instance.
 func (s *sshUtilsImpl) SSHAgent() (agent.Agent, error) {
+	var conn net.Conn
+	var err error
+	
 	if s.runtime.CurrentOS() == "windows" {
-
-		conn, err := winio.DialPipe(windowsSSHAgentPipe, nil)
-
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to open ssh agent pipe")
-		}
-
-		return agent.NewClient(conn), nil
+		conn, err = DialPipe()
+	} else {
+		socket := os.Getenv("SSH_AUTH_SOCK")
+		conn, err = net.Dial("unix", socket)
 	}
-
-	return nil, errors.New("SSH agent not supported for this OS")
+	
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to open ssh agent pipe")
+	}
+	
+	return agent.NewClient(conn), nil
 }
 
 //Adds a private key to the SSH Agent.
